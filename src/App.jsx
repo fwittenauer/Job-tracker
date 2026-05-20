@@ -99,7 +99,7 @@ function EntryForm({ entry, onChange, onSave, onCancel, saving, orgSuggestions, 
           <DateF label="Offer Date"     id="offerDate"     value={entry.offerDate}     onChange={v=>set('offerDate',v)} />
         </div>
         <div className="form-row cols-4">
-          <DateF label="Date \"No\" Received" id="no" value={entry.no} onChange={v=>set('no',v)} />
+          <DateF label='Date "No" Received' id="no" value={entry.no} onChange={v=>set('no',v)} />
           <div className="field"/>
           <div className="field"/>
           <div className="days-counters">
