@@ -7,10 +7,11 @@ const STATUS_OPTIONS = [
   'Rejected', 'Withdrew', 'No Response',
 ]
 const FLAG_META = {
-  'li-on':  { label: 'LinkedIn ON',  cls: 'fl-li-on'  },
-  'li-off': { label: 'LinkedIn OFF', cls: 'fl-li-off'  },
-  'indeed': { label: 'Indeed ON',    cls: 'fl-indeed'  },
-  'street': { label: 'Street Addr',  cls: 'fl-street'  },
+  'li-on':     { label: 'LinkedIn ON',  cls: 'fl-li-on'   },
+  'li-off':    { label: 'LinkedIn OFF', cls: 'fl-li-off'  },
+  'indeed-on': { label: 'Indeed ON',    cls: 'fl-indeed'  },
+  'indeed-off':{ label: 'Indeed OFF',   cls: 'fl-indeed-off' },
+  'street':    { label: 'Street Addr',  cls: 'fl-street'  },
 }
 const ATS_SUGGESTIONS = [
   'Workday','Greenhouse','LinkedIn Easy Apply','SuccessFactors','iCIMS',
@@ -19,6 +20,7 @@ const ATS_SUGGESTIONS = [
   'BambooHR','Rippling','Workable','ADP','Eightfold','Paradox','Email',
 ]
 const PER_PAGE = 30
+const CHART_COLORS = ['#2a5298','#1a7f5a','#b45309','#7c3aed','#c0392b','#0891b2','#be185d','#065f46']
 
 function dateDiff(a, b) {
   if (!a || !b) return null
@@ -54,6 +56,393 @@ function DateF({ label, id, value, onChange, cls }) {
   )
 }
 
+// ── Simple SVG bar chart ─────────────────────────────────────
+function BarChart({ data, color, unit='', height=180, horizontal=false }) {
+  if (!data || !data.length) return <div className="chart-empty">No data</div>
+  const max = Math.max(...data.map(d => d.value), 1)
+
+  if (horizontal) {
+    const barH = 24, gap = 6, padding = { left: 140, right: 60, top: 10, bottom: 10 }
+    const svgH = data.length * (barH + gap) + padding.top + padding.bottom
+    const svgW = 500
+    const chartW = svgW - padding.left - padding.right
+    return (
+      <svg viewBox={`0 0 ${svgW} ${svgH}`} style={{width:'100%',maxWidth:svgW,display:'block'}}>
+        {data.map((d, i) => {
+          const y = padding.top + i * (barH + gap)
+          const w = Math.max(2, (d.value / max) * chartW)
+          return (
+            <g key={d.label}>
+              <text x={padding.left - 6} y={y + barH/2 + 4} textAnchor="end"
+                fontSize={11} fill="#5a5650">{d.label}</text>
+              <rect x={padding.left} y={y} width={w} height={barH}
+                fill={color || CHART_COLORS[0]} rx={3} opacity={0.85}/>
+              <text x={padding.left + w + 5} y={y + barH/2 + 4}
+                fontSize={11} fill="#1c1a17">{d.value}{unit}</text>
+            </g>
+          )
+        })}
+      </svg>
+    )
+  }
+
+  const padding = { left: 40, right: 10, top: 10, bottom: 28 }
+  const svgW = Math.max(300, data.length * 52)
+  const chartH = height - padding.top - padding.bottom
+  const chartW = svgW - padding.left - padding.right
+  const barW = Math.min(40, chartW / data.length - 4)
+
+  return (
+    <svg viewBox={`0 0 ${svgW} ${height}`} style={{width:'100%',display:'block'}}>
+      {[0, 0.25, 0.5, 0.75, 1].map(t => {
+        const y = padding.top + chartH * (1 - t)
+        const val = Math.round(max * t)
+        return (
+          <g key={t}>
+            <line x1={padding.left} x2={svgW - padding.right} y1={y} y2={y}
+              stroke="#dedad3" strokeWidth={1}/>
+            <text x={padding.left - 4} y={y + 4} textAnchor="end"
+              fontSize={9} fill="#9a9690">{val}</text>
+          </g>
+        )
+      })}
+      {data.map((d, i) => {
+        const x = padding.left + (i / data.length) * chartW + (chartW / data.length - barW) / 2
+        const barH = Math.max(2, (d.value / max) * chartH)
+        const y = padding.top + chartH - barH
+        return (
+          <g key={d.label}>
+            <rect x={x} y={y} width={barW} height={barH}
+              fill={Array.isArray(color) ? color[i % color.length] : (color || CHART_COLORS[0])}
+              rx={3} opacity={0.85}/>
+            <text x={x + barW/2} y={height - padding.bottom + 12}
+              textAnchor="middle" fontSize={10} fill="#5a5650">{d.label}</text>
+            <text x={x + barW/2} y={y - 3}
+              textAnchor="middle" fontSize={9} fill="#1c1a17">{d.value}{unit}</text>
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+// ── Line chart for trends ────────────────────────────────────
+function LineChart({ series, height=200 }) {
+  if (!series || !series.length || !series[0].data.length) return <div className="chart-empty">No data</div>
+  const allVals = series.flatMap(s => s.data.map(d => d.value)).filter(v => v !== null)
+  const allLabels = series[0].data.map(d => d.label)
+  const max = Math.max(...allVals, 1)
+  const min = 0
+  const padding = { left: 44, right: 16, top: 16, bottom: 28 }
+  const svgW = Math.max(360, allLabels.length * 60)
+  const chartH = height - padding.top - padding.bottom
+  const chartW = svgW - padding.left - padding.right
+
+  function getX(i) { return padding.left + (i / (allLabels.length - 1)) * chartW }
+  function getY(v) { return padding.top + chartH - ((v - min) / (max - min)) * chartH }
+
+  return (
+    <svg viewBox={`0 0 ${svgW} ${height}`} style={{width:'100%',display:'block'}}>
+      {[0, 0.25, 0.5, 0.75, 1].map(t => {
+        const y = padding.top + chartH * (1 - t)
+        const val = Math.round(max * t)
+        return (
+          <g key={t}>
+            <line x1={padding.left} x2={svgW - padding.right} y1={y} y2={y}
+              stroke="#dedad3" strokeWidth={1}/>
+            <text x={padding.left - 4} y={y + 4} textAnchor="end" fontSize={9} fill="#9a9690">{val}</text>
+          </g>
+        )
+      })}
+      {allLabels.map((lbl, i) => (
+        <text key={lbl} x={getX(i)} y={height - padding.bottom + 12}
+          textAnchor="middle" fontSize={10} fill="#5a5650">{lbl}</text>
+      ))}
+      {series.map((s, si) => {
+        const pts = s.data.filter(d => d.value !== null)
+        if (pts.length < 2) return null
+        const path = pts.map((d, i) => {
+          const xi = allLabels.indexOf(d.label)
+          return `${i === 0 ? 'M' : 'L'}${getX(xi)},${getY(d.value)}`
+        }).join(' ')
+        return (
+          <g key={s.label}>
+            <path d={path} fill="none" stroke={CHART_COLORS[si]} strokeWidth={2.5}
+              strokeLinejoin="round" strokeLinecap="round"/>
+            {pts.map(d => {
+              const xi = allLabels.indexOf(d.label)
+              return (
+                <g key={d.label}>
+                  <circle cx={getX(xi)} cy={getY(d.value)} r={4}
+                    fill={CHART_COLORS[si]} stroke="#fff" strokeWidth={1.5}/>
+                  <text x={getX(xi)} y={getY(d.value) - 8}
+                    textAnchor="middle" fontSize={9} fill={CHART_COLORS[si]}
+                    fontWeight="600">{d.value}</text>
+                </g>
+              )
+            })}
+          </g>
+        )
+      })}
+      {series.length > 1 && (
+        <g>
+          {series.map((s, si) => (
+            <g key={s.label} transform={`translate(${padding.left + si * 120}, ${height - 4})`}>
+              <rect width={10} height={10} y={-10} fill={CHART_COLORS[si]} rx={2}/>
+              <text x={14} y={-2} fontSize={10} fill="#5a5650">{s.label}</text>
+            </g>
+          ))}
+        </g>
+      )}
+    </svg>
+  )
+}
+
+// ── Analytics Panel ──────────────────────────────────────────
+function AnalyticsPanel({ entries }) {
+  const years = useMemo(() =>
+    [...new Set(entries.map(e => e.applied?.slice(0,4)).filter(Boolean))].sort(),
+    [entries])
+
+  // Applications by year
+  const appsByYear = useMemo(() =>
+    years.map(y => ({ label: y, value: entries.filter(e => (e.applied||'').startsWith(y)).length })),
+    [entries, years])
+
+  // Avg days to rejection by year (mean + median)
+  const rejectionByYear = useMemo(() => {
+    return {
+      mean: years.map(y => {
+        const days = entries
+          .filter(e => (e.applied||'').startsWith(y) && e.no)
+          .map(e => dateDiff(e.applied, e.no))
+          .filter(d => d !== null && d >= 0)
+        return { label: y, value: days.length ? Math.round(days.reduce((a,b)=>a+b,0)/days.length) : null }
+      }).filter(d => d.value !== null),
+      median: years.map(y => {
+        const days = entries
+          .filter(e => (e.applied||'').startsWith(y) && e.no)
+          .map(e => dateDiff(e.applied, e.no))
+          .filter(d => d !== null && d >= 0)
+          .sort((a,b) => a-b)
+        if (!days.length) return { label: y, value: null }
+        const mid = Math.floor(days.length / 2)
+        return { label: y, value: days.length % 2 ? days[mid] : Math.round((days[mid-1]+days[mid])/2) }
+      }).filter(d => d.value !== null),
+    }
+  }, [entries, years])
+
+  // Avg days apply to screen by year
+  const screenByYear = useMemo(() => {
+    return {
+      mean: years.map(y => {
+        const days = entries
+          .filter(e => (e.applied||'').startsWith(y) && e.screen)
+          .map(e => dateDiff(e.applied, e.screen))
+          .filter(d => d !== null && d >= 0)
+        return { label: y, value: days.length ? Math.round(days.reduce((a,b)=>a+b,0)/days.length) : null }
+      }).filter(d => d.value !== null),
+      median: years.map(y => {
+        const days = entries
+          .filter(e => (e.applied||'').startsWith(y) && e.screen)
+          .map(e => dateDiff(e.applied, e.screen))
+          .filter(d => d !== null && d >= 0)
+          .sort((a,b) => a-b)
+        if (!days.length) return { label: y, value: null }
+        const mid = Math.floor(days.length / 2)
+        return { label: y, value: days.length % 2 ? days[mid] : Math.round((days[mid-1]+days[mid])/2) }
+      }).filter(d => d.value !== null),
+    }
+  }, [entries, years])
+
+  // Top ATS overall
+  const atsOverall = useMemo(() => {
+    const counts = {}
+    entries.forEach(e => { if (e.ats) counts[e.ats] = (counts[e.ats]||0)+1 })
+    return Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,12)
+      .map(([label, value]) => ({ label, value }))
+  }, [entries])
+
+  // Top ATS by year (top 5 ATS, show count per year)
+  const atsByYear = useMemo(() => {
+    const top5 = atsOverall.slice(0, 5).map(a => a.label)
+    return top5.map((ats, i) => ({
+      label: ats,
+      data: years.map(y => ({
+        label: y,
+        value: entries.filter(e => (e.applied||'').startsWith(y) && e.ats === ats).length
+      }))
+    }))
+  }, [entries, years, atsOverall])
+
+  // Flag summary
+  const flagSummary = useMemo(() => {
+    const total = entries.length
+    return Object.entries(FLAG_META).map(([f, { label }]) => ({
+      label, flag: f,
+      count: entries.filter(e => (e.flags||[]).includes(f)).length,
+      pct: total ? Math.round(entries.filter(e => (e.flags||[]).includes(f)).length / total * 100) : 0
+    }))
+  }, [entries])
+
+  // Top locations
+  const topLocs = useMemo(() => {
+    const counts = {}
+    entries.forEach(e => { if (e.loc) counts[e.loc] = (counts[e.loc]||0)+1 })
+    return Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10)
+      .map(([label, value]) => ({ label, value }))
+  }, [entries])
+
+  return (
+    <div className="analytics">
+
+      {/* Summary stats */}
+      <div className="an-section">
+        <div className="an-grid-4">
+          <div className="an-card">
+            <div className="an-num">{entries.length.toLocaleString()}</div>
+            <div className="an-lbl">Total applications</div>
+          </div>
+          <div className="an-card">
+            <div className="an-num">{entries.filter(e=>e.no).length.toLocaleString()}</div>
+            <div className="an-lbl">Rejections received</div>
+          </div>
+          <div className="an-card">
+            <div className="an-num">{entries.filter(e=>e.screen).length.toLocaleString()}</div>
+            <div className="an-lbl">Phone screens</div>
+          </div>
+          <div className="an-card">
+            <div className="an-num">{entries.filter(e=>e.interviewDate).length.toLocaleString()}</div>
+            <div className="an-lbl">Interviews</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Applications by year */}
+      <div className="an-section">
+        <div className="an-title">Applications submitted by year</div>
+        <div className="chart-wrap">
+          <BarChart data={appsByYear} color={CHART_COLORS[0]} height={200}/>
+        </div>
+      </div>
+
+      {/* Days to rejection by year */}
+      <div className="an-section">
+        <div className="an-title">Days from apply to rejection — by year</div>
+        <div className="an-subtitle">Are organizations responding faster over time?</div>
+        <div className="chart-legend">
+          <span style={{color:CHART_COLORS[0]}}>● Mean</span>
+          <span style={{color:CHART_COLORS[1]}}>● Median</span>
+        </div>
+        <div className="chart-wrap">
+          <LineChart series={[
+            { label: 'Mean days', data: rejectionByYear.mean },
+            { label: 'Median days', data: rejectionByYear.median },
+          ]} height={220}/>
+        </div>
+        <div className="an-insight">
+          {rejectionByYear.mean.length >= 2 && (() => {
+            const first = rejectionByYear.mean[0]
+            const last  = rejectionByYear.mean[rejectionByYear.mean.length - 1]
+            const faster = first.value > last.value
+            return (
+              <span>
+                Mean days to rejection went from <strong>{first.value}d</strong> in {first.label} to{' '}
+                <strong>{last.value}d</strong> in {last.label} —{' '}
+                {faster ? `${first.value - last.value} days faster` : `${last.value - first.value} days slower`}.
+              </span>
+            )
+          })()}
+        </div>
+      </div>
+
+      {/* Days apply to screen by year */}
+      <div className="an-section">
+        <div className="an-title">Days from apply to phone screen — by year</div>
+        <div className="an-subtitle">Is the funnel moving faster?</div>
+        <div className="chart-legend">
+          <span style={{color:CHART_COLORS[0]}}>● Mean</span>
+          <span style={{color:CHART_COLORS[1]}}>● Median</span>
+        </div>
+        <div className="chart-wrap">
+          <LineChart series={[
+            { label: 'Mean days', data: screenByYear.mean },
+            { label: 'Median days', data: screenByYear.median },
+          ]} height={220}/>
+        </div>
+      </div>
+
+      {/* ATS by year */}
+      <div className="an-section">
+        <div className="an-title">Top 5 ATS platforms — usage by year</div>
+        <div className="an-subtitle">Has the ATS landscape shifted over time?</div>
+        <div className="chart-legend">
+          {atsByYear.map((s, i) => (
+            <span key={s.label} style={{color: CHART_COLORS[i]}}>● {s.label}</span>
+          ))}
+        </div>
+        <div className="ats-year-grid">
+          {years.map(y => {
+            const yearData = atsByYear.map(s => ({
+              label: s.label.replace(' Easy Apply','').replace(' Recruiting Cloud',''),
+              value: s.data.find(d => d.label === y)?.value || 0
+            })).filter(d => d.value > 0).sort((a,b) => b.value - a.value)
+            return (
+              <div key={y} className="ats-year-col">
+                <div className="ats-year-label">{y}</div>
+                {yearData.map((d, i) => (
+                  <div key={d.label} className="ats-year-row">
+                    <div className="ats-year-bar-wrap">
+                      <div className="ats-year-bar" style={{
+                        width: `${Math.round((d.value / Math.max(...yearData.map(x=>x.value))) * 100)}%`,
+                        background: CHART_COLORS[atsByYear.findIndex(s => s.label.startsWith(d.label.split(' ')[0])) % CHART_COLORS.length]
+                      }}/>
+                    </div>
+                    <span className="ats-year-name">{d.label}</span>
+                    <span className="ats-year-count">{d.value}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Top ATS overall */}
+      <div className="an-section">
+        <div className="an-title">Top ATS platforms overall</div>
+        <div className="chart-wrap">
+          <BarChart data={atsOverall} color={CHART_COLORS[2]} horizontal={true}/>
+        </div>
+      </div>
+
+      {/* Flags */}
+      <div className="an-section">
+        <div className="an-title">Application flags</div>
+        <div className="an-grid-3">
+          {flagSummary.map(f => (
+            <div key={f.flag} className="an-card">
+              <div className="an-num">{f.count.toLocaleString()}</div>
+              <div className="an-lbl">{f.label}</div>
+              <div className="an-pct">{f.pct}% of applications</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Top locations */}
+      <div className="an-section">
+        <div className="an-title">Top locations</div>
+        <div className="chart-wrap">
+          <BarChart data={topLocs} color={CHART_COLORS[1]} horizontal={true}/>
+        </div>
+      </div>
+
+    </div>
+  )
+}
+
+// ── Entry Form ────────────────────────────────────────────────
 function EntryForm({ entry, onChange, onSave, onCancel, saving, orgSuggestions, atsSuggestions }) {
   const set = (k,v) => onChange({...entry,[k]:v})
   const toggleFlag = f => {
@@ -146,6 +535,7 @@ function EntryForm({ entry, onChange, onSave, onCancel, saving, orgSuggestions, 
   )
 }
 
+// ── Upload Screen ─────────────────────────────────────────────
 function UploadScreen({ onLoad }) {
   const [dragging, setDragging] = useState(false)
   const [error, setError] = useState('')
@@ -187,6 +577,7 @@ function UploadScreen({ onLoad }) {
   )
 }
 
+// ── Stat Bar ──────────────────────────────────────────────────
 function StatBar({ entries }) {
   const s = useMemo(() => {
     const days = entries.filter(e=>e.no&&e.applied)
@@ -222,6 +613,7 @@ function StatBar({ entries }) {
   )
 }
 
+// ── Main App ──────────────────────────────────────────────────
 export default function App() {
   const [loaded,    setLoaded]    = useState(null)
   const [entries,   setEntries]   = useState([])
@@ -371,6 +763,7 @@ export default function App() {
         <div className="tabs">
           <button className={`tab ${tab==='log'?'active':''}`} onClick={()=>setTab('log')}>Application Log</button>
           <button className={`tab ${tab==='new'?'active':''}`} onClick={()=>setTab('new')}>+ New Entry</button>
+          <button className={`tab ${tab==='analytics'?'active':''}`} onClick={()=>setTab('analytics')}>Analytics</button>
         </div>
       </div>
 
@@ -379,6 +772,13 @@ export default function App() {
           <h2 className="panel-title">New Application</h2>
           <EntryForm entry={newEntry} onChange={setNewEntry} onSave={handleAddEntry}
             saving={saving} orgSuggestions={orgSuggestions} atsSuggestions={atsSuggestions}/>
+        </div>
+      )}
+
+      {tab==='analytics' && (
+        <div className="panel">
+          <h2 className="panel-title">Analytics</h2>
+          <AnalyticsPanel entries={entries}/>
         </div>
       )}
 
