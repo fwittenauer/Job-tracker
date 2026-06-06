@@ -17,7 +17,8 @@ function parseFlags(notes, extra) {
   if (/apply w\/ linkedin on|apply with linkedin on|linkedin easy apply|linkedin turned on/i.test(c) &&
       !/linkedin.*?off/i.test(c)) flags.push('li-on')
   if (/linkedin off|linkedin not|no apply w\/ linkedin|linkedin.*?off/i.test(c)) flags.push('li-off')
-  if (/indeed on/i.test(c)) flags.push('indeed')
+  if (/indeed on/i.test(c)) flags.push('indeed-on')
+  if (/indeed off|no indeed|indeed not/i.test(c)) flags.push('indeed-off')
   if (/street address/i.test(c)) flags.push('street')
   return flags
 }
@@ -61,7 +62,6 @@ export function parseWorkbook(buffer) {
       notes,
       extraNotes:    extra,
       flags:         parseFlags(notes, extra),
-      // New columns — cols 13, 14, 15 (zero-indexed)
       interviewDate: fmtDate(row[13] || ''),
       offerDate:     fmtDate(row[14] || ''),
       status:        String(row[15]  || '').trim(),
@@ -72,7 +72,6 @@ export function parseWorkbook(buffer) {
 }
 
 export function buildExport(originalRaw, headerRow, entries) {
-  // Deep-clone raw rows
   const raw = originalRaw.map(r => [...r])
 
   // Ensure new header columns exist
